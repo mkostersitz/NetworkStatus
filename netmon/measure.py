@@ -1,4 +1,5 @@
 """Core network measurement functions."""
+import platform
 import subprocess
 import re
 import time
@@ -19,28 +20,61 @@ def ping(host: str = "8.8.8.8", count: int = 10, timeout: int = 5) -> dict:
     Returns latency_ms, jitter_ms, pkt_loss (0-100), success.
     """
     try:
+        is_windows = platform.system() == "Windows"
+        if is_windows:
+            cmd = ["ping", "-n", str(count), "-w", str(timeout * 1000), host]
+        else:
+            cmd = ["ping", "-c", str(count), "-W", str(timeout * 1000), host]
+
         result = subprocess.run(
-            ["ping", "-c", str(count), "-W", str(timeout * 1000), host],
-            capture_output=True, text=True, timeout=timeout + count + 5
+            cmd, capture_output=True, text=True, timeout=timeout + count + 5
         )
         out = result.stdout
 
-        # Extract round-trip times
-        rtt_line = re.search(r"round-trip.*?=\s*([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+)", out)
-        loss_line = re.search(r"(\d+(?:\.\d+)?)% packet loss", out)
-
+        loss_line = re.search(r"(\d+(?:\.\d+)?)% (?:packet )?loss", out)
         pkt_loss = float(loss_line.group(1)) if loss_line else 100.0
 
-        if rtt_line:
-            min_ms, avg_ms, max_ms, stddev_ms = map(float, rtt_line.groups())
-            return {
-                "latency_ms": avg_ms,
-                "jitter_ms": stddev_ms,
-                "pkt_loss": pkt_loss,
-                "success": True,
-            }
+        if is_windows:
+            # Windows summary: "Average = 14ms"
+            avg_m = re.search(r"Average\s*=\s*([\d.]+)ms", out)
+            min_m = re.search(r"Minimum\s*=\s*([\d.]+)ms", out)
+            max_m = re.search(r"Maximum\s*=\s*([\d.]+)ms", out)
+            # Individual replies: "time=14ms" or "time<1ms"
+            rtts = list(map(float, re.findall(r"time[=<]([\d.]+)ms", out)))
+            if avg_m:
+                avg_ms = float(avg_m.group(1))
+                jitter_ms = (
+                    statistics.stdev(rtts) if len(rtts) > 1
+                    else (float(max_m.group(1)) - float(min_m.group(1))) / 2
+                    if min_m and max_m else 0.0
+                )
+                return {
+                    "latency_ms": avg_ms,
+                    "jitter_ms": jitter_ms,
+                    "pkt_loss": pkt_loss,
+                    "success": True,
+                }
+            if rtts:
+                return {
+                    "latency_ms": statistics.mean(rtts),
+                    "jitter_ms": statistics.stdev(rtts) if len(rtts) > 1 else 0.0,
+                    "pkt_loss": pkt_loss,
+                    "success": True,
+                }
         else:
-            # Parse individual RTTs for manual jitter calc
+            # macOS/Linux summary: "round-trip min/avg/max/stddev = ..."
+            rtt_line = re.search(
+                r"round-trip.*?=\s*([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+)", out
+            )
+            if rtt_line:
+                min_ms, avg_ms, max_ms, stddev_ms = map(float, rtt_line.groups())
+                return {
+                    "latency_ms": avg_ms,
+                    "jitter_ms": stddev_ms,
+                    "pkt_loss": pkt_loss,
+                    "success": True,
+                }
+            # Fallback: parse individual RTTs
             rtts = list(map(float, re.findall(r"time=([\d.]+)\s*ms", out)))
             if rtts:
                 return {
@@ -49,8 +83,9 @@ def ping(host: str = "8.8.8.8", count: int = 10, timeout: int = 5) -> dict:
                     "pkt_loss": pkt_loss,
                     "success": True,
                 }
-            return {"latency_ms": None, "jitter_ms": None,
-                    "pkt_loss": 100.0, "success": False}
+
+        return {"latency_ms": None, "jitter_ms": None,
+                "pkt_loss": 100.0, "success": False}
 
     except Exception:
         return {"latency_ms": None, "jitter_ms": None,

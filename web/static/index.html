@@ -466,10 +466,10 @@ async function loadCharts() {
 // ── Speed symmetry helper ─────────────────────────────────────────────────────
 function symmetryNote(dl, ul) {
   if (dl == null || ul == null || ul === 0) return '';
-  const faster = dl >= ul ? 'upload' : 'download';
-  const slower = dl >= ul ? 'download' : 'upload';
   const pct = Math.round(Math.abs(dl - ul) / Math.max(dl, ul) * 100);
   if (pct < 2) return '  <span style="color:var(--green)">≈ symmetric</span>';
+  const slower = dl < ul ? 'download' : 'upload';
+  const faster = dl < ul ? 'upload' : 'download';
   return `  <span style="color:var(--yellow)">${slower} is ${pct}% slower than ${faster}</span>`;
 }
 
