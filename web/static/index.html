@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetMon</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<style>
+:root {
+  --bg:       #0f1117;
+  --surface:  #1a1d27;
+  --border:   #2a2d3a;
+  --text:     #e2e8f0;
+  --muted:    #64748b;
+  --accent:   #6366f1;
+  --green:    #22c55e;
+  --yellow:   #eab308;
+  --red:      #ef4444;
+  --blue:     #3b82f6;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif;
+       font-size: 14px; line-height: 1.5; }
+
+header { background: var(--surface); border-bottom: 1px solid var(--border);
+         padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 52px; }
+header h1 { font-size: 18px; font-weight: 700; letter-spacing: -.5px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.alert-bell { margin-left: auto; position: relative; cursor: pointer; font-size: 18px;
+              background: none; border: none; color: var(--text); }
+.alert-badge { position: absolute; top: -4px; right: -4px; background: var(--red);
+               color: #fff; border-radius: 9px; padding: 0 5px; font-size: 10px;
+               font-weight: 700; display: none; }
+.alert-badge.show { display: block; }
+
+main { padding: 24px; max-width: 1280px; margin: 0 auto; }
+
+/* Stat tiles */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+        padding: 16px; }
+.tile-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.tile-value { font-size: 28px; font-weight: 700; margin-top: 4px; line-height: 1; }
+.tile-unit  { font-size: 13px; color: var(--muted); }
+.good   { color: var(--green); }
+.warn   { color: var(--yellow); }
+.bad    { color: var(--red); }
+.neutral{ color: var(--text); }
+
+/* Charts */
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+@media(max-width:720px){ .charts { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.card h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+           letter-spacing: .05em; margin-bottom: 12px; }
+.chart-wrap { position: relative; height: 180px; }
+
+/* Speed test */
+.speed-row { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.btn { background: var(--accent); color: #fff; border: none; border-radius: 6px;
+       padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn-sm { background: var(--surface); border: 1px solid var(--border); color: var(--text);
+          border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
+.speed-status { color: var(--muted); font-size: 13px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+.tab  { background: none; border: 1px solid var(--border); border-radius: 6px;
+        padding: 6px 14px; cursor: pointer; font-size: 13px; color: var(--muted); }
+.tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* History table */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 10px;
+     border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 5px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+
+/* NL query */
+.query-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.query-input { flex: 1; background: var(--surface); border: 1px solid var(--border);
+               border-radius: 6px; padding: 8px 12px; color: var(--text); font-size: 13px; }
+.query-answer { background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+                padding: 16px; font-size: 13px; line-height: 1.75; min-height: 60px; }
+.query-answer p  { margin-bottom: .75em; }
+.query-answer p:last-child { margin-bottom: 0; }
+.query-answer h1,.query-answer h2,.query-answer h3 { font-weight: 600; margin: 1em 0 .4em; color: var(--text); }
+.query-answer h1 { font-size: 16px; } .query-answer h2 { font-size: 15px; } .query-answer h3 { font-size: 14px; }
+.query-answer ul,.query-answer ol { padding-left: 1.4em; margin-bottom: .75em; }
+.query-answer li { margin-bottom: .25em; }
+.query-answer strong { color: var(--text); font-weight: 600; }
+.query-answer em { color: var(--muted); }
+.query-answer code { background: var(--surface); border: 1px solid var(--border);
+                     border-radius: 4px; padding: 1px 5px; font-family: ui-monospace, monospace;
+                     font-size: 12px; color: var(--accent); }
+.query-answer pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+                    padding: 12px; overflow-x: auto; margin-bottom: .75em; }
+.query-answer pre code { background: none; border: none; padding: 0; color: var(--text); font-size: 12px; }
+.query-answer blockquote { border-left: 3px solid var(--accent); padding-left: 12px;
+                            color: var(--muted); margin: .75em 0; }
+.query-answer hr { border: none; border-top: 1px solid var(--border); margin: 1em 0; }
+.query-answer table { border-collapse: collapse; width: 100%; margin-bottom: .75em; font-size: 12px; }
+.query-answer th,.query-answer td { border: 1px solid var(--border); padding: 5px 10px; text-align: left; }
+.query-answer th { background: var(--surface); font-weight: 600; }
+
+/* Alerts panel */
+.alert-log { max-height: 200px; overflow-y: auto; }
+.alert-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.alert-item:last-child { border-bottom: none; }
+.alert-ts { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.alert-msg { color: var(--yellow); }
+
+/* Settings form */
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media(max-width:600px){ .settings-grid { grid-template-columns: 1fr; } }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 12px; color: var(--muted); }
+.field input { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+               padding: 7px 10px; color: var(--text); font-size: 13px; }
+.save-row { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+.saved-msg { color: var(--green); font-size: 12px; display: none; }
+
+/* Modal */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+            z-index: 100; align-items: center; justify-content: center; }
+.modal-bg.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+         padding: 24px; width: min(480px, 95vw); max-height: 90vh; overflow-y: auto; }
+.modal h2 { margin-bottom: 16px; }
+.modal-close { float: right; background: none; border: none; color: var(--muted);
+               cursor: pointer; font-size: 18px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="dot" id="liveDot"></div>
+  <h1>NetMon</h1>
+  <span id="headerStats" style="color:var(--muted);font-size:13px"></span>
+  <button class="alert-bell" onclick="openAlertModal()" title="Alerts">
+    🔔<span class="alert-badge" id="alertBadge">0</span>
+  </button>
+</header>
+
+<main>
+
+  <!-- Stat tiles -->
+  <div class="tiles">
+    <div class="tile">
+      <div class="tile-label">Latency</div>
+      <div class="tile-value" id="tileLat">—</div>
+      <div class="tile-unit">ms</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Jitter</div>
+      <div class="tile-value" id="tileJit">—</div>
+      <div class="tile-unit">ms</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Packet Loss</div>
+      <div class="tile-value" id="tileLoss">—</div>
+      <div class="tile-unit">%</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Consistency</div>
+      <div class="tile-value" id="tileConsistency">—</div>
+      <div class="tile-unit">% (24h)</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Download</div>
+      <div class="tile-value" id="tileDl">—</div>
+      <div class="tile-unit">Mbps</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Upload</div>
+      <div class="tile-value" id="tileUl">—</div>
+      <div class="tile-unit">Mbps</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts">
+    <div class="card">
+      <h2>Latency &amp; Jitter</h2>
+      <div class="chart-wrap"><canvas id="latChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Speed Tests</h2>
+      <div class="chart-wrap"><canvas id="speedChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Packet Loss %</h2>
+      <div class="chart-wrap"><canvas id="lossChart"></canvas></div>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;justify-content:space-between">
+      <h2>Speed Test</h2>
+      <div>
+        <div class="speed-status" id="speedStatus">Last test: —</div>
+        <div style="margin-top:16px">
+          <button class="btn" id="speedBtn" onclick="runSpeed()">Run Speed Test</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History / Query / Settings tabs -->
+  <div class="card">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('history',this)">History</button>
+      <button class="tab" onclick="switchTab('query',this)">Ask AI</button>
+      <button class="tab" onclick="switchTab('settings',this)">Alert Settings</button>
+    </div>
+
+    <!-- History -->
+    <div id="tab-history">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <select id="histHours" onchange="loadHistory()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text)">
+          <option value="3">Last 3h</option>
+          <option value="6">Last 6h</option>
+          <option value="24" selected>Last 24h</option>
+          <option value="48">Last 48h</option>
+          <option value="168">Last 7d</option>
+        </select>
+        <button class="btn-sm" onclick="switchHistView('checks')">Checks</button>
+        <button class="btn-sm" onclick="switchHistView('speeds')">Speed Tests</button>
+      </div>
+      <div class="tbl-wrap" id="histTable"></div>
+    </div>
+
+    <!-- Query -->
+    <div id="tab-query" style="display:none">
+      <div class="query-row">
+        <input class="query-input" id="queryInput" placeholder="Was my connection stable last night?" onkeydown="if(event.key==='Enter')submitQuery()">
+        <button class="btn" onclick="submitQuery()">Ask</button>
+      </div>
+      <div class="query-answer" id="queryAnswer">Ask a question about your network history…</div>
+    </div>
+
+    <!-- Settings -->
+    <div id="tab-settings" style="display:none">
+      <div class="settings-grid" id="settingsGrid"></div>
+      <div class="save-row">
+        <button class="btn" onclick="saveSettings()">Save</button>
+        <span class="saved-msg" id="savedMsg">Saved ✓</span>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- Alert log modal -->
+<div class="modal-bg" id="alertModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeAlertModal()">✕</button>
+    <h2>Alerts</h2>
+    <div class="alert-log" id="alertLog"><p style="color:var(--muted)">No alerts yet.</p></div>
+  </div>
+</div>
+
+<audio id="alertSound" src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAA..." preload="auto"></audio>
+
+<script>
+// ── Chart.js defaults ────────────────────────────────────────────────────────
+Chart.defaults.color = '#64748b';
+Chart.defaults.borderColor = '#2a2d3a';
+Chart.defaults.font.family = 'system-ui, sans-serif';
+Chart.defaults.font.size = 11;
+
+const MAX_POINTS = 120;
+
+function makeLineChart(id, datasets) {
+  return new Chart(document.getElementById(id), {
+    type: 'line',
+    data: { labels: [], datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 12 } } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 6, maxRotation: 0 } },
+        y: { beginAtZero: true },
+      },
+      elements: { point: { radius: 0 }, line: { borderWidth: 1.5, tension: 0.3 } },
+    },
+  });
+}
+
+function makeBarChart(id, datasets) {
+  return new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels: [], datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 12 } } },
+      scales: { x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } }, y: { beginAtZero: true } },
+    },
+  });
+}
+
+const latChart = makeLineChart('latChart', [
+  { label: 'Latency ms', data: [], borderColor: '#6366f1', backgroundColor: '#6366f120' },
+  { label: 'Jitter ms',  data: [], borderColor: '#eab308', backgroundColor: '#eab30820' },
+]);
+const speedChart = makeBarChart('speedChart', [
+  { label: '↓ Mbps', data: [], backgroundColor: '#22c55e99' },
+  { label: '↑ Mbps', data: [], backgroundColor: '#3b82f699' },
+]);
+const lossChart = makeBarChart('lossChart', [
+  { label: 'Loss %', data: [], backgroundColor: '#ef444499' },
+]);
+
+// ── Colour helpers ────────────────────────────────────────────────────────────
+function latColor(v)  { return v==null?'neutral': v<=50?'good': v<=150?'warn':'bad'; }
+function jitColor(v)  { return v==null?'neutral': v<=10?'good': v<=30?'warn':'bad'; }
+function lossColor(v) { return v==null?'neutral': v<=1?'good': v<=5?'warn':'bad'; }
+function conColor(v)  { return v==null?'neutral': v>=99?'good': v>=95?'warn':'bad'; }
+
+function setTile(id, val, colorFn, decimals=1) {
+  const el = document.getElementById(id);
+  el.className = 'tile-value ' + colorFn(val);
+  el.textContent = val == null ? '—' : Number(val).toFixed(decimals);
+}
+
+function fmtTs(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+
+// ── SSE ───────────────────────────────────────────────────────────────────────
+let alertCount = 0;
+const alerts = [];
+
+function connectSSE() {
+  const es = new EventSource('/api/stream');
+  document.getElementById('liveDot').classList.add('live');
+
+  es.addEventListener('check', e => {
+    const r = JSON.parse(e.data);
+    setTile('tileLat',  r.latency_ms, latColor);
+    setTile('tileJit',  r.jitter_ms,  jitColor);
+    setTile('tileLoss', r.pkt_loss,   lossColor, 1);
+    if (r.dl_mbps != null) setTile('tileDl', r.dl_mbps, ()=>'neutral', 1);
+    if (r.ul_mbps != null) setTile('tileUl', r.ul_mbps, ()=>'neutral', 1);
+    document.getElementById('headerStats').textContent =
+      `${r.host}  ${r.latency_ms?.toFixed(0) ?? '—'} ms`;
+
+    const label = fmtTs(r.ts);
+    pushPoint(latChart, label, [r.latency_ms ?? 0, r.jitter_ms ?? 0]);
+    pushPoint(lossChart, label, [r.pkt_loss ?? 0]);
+  });
+
+  es.addEventListener('speed', e => {
+    const r = JSON.parse(e.data);
+    setTile('tileDl', r.download_mbps, ()=>'neutral', 1);
+    setTile('tileUl', r.upload_mbps,   ()=>'neutral', 1);
+    const label = fmtTs(r.ts);
+    pushBarPoint(speedChart, label, [r.download_mbps ?? 0, r.upload_mbps ?? 0]);
+    document.getElementById('speedStatus').textContent =
+      `↓${r.download_mbps?.toFixed(1)} / ↑${r.upload_mbps?.toFixed(1)} Mbps  (${label})`;
+    document.getElementById('speedBtn').disabled = false;
+    document.getElementById('speedBtn').textContent = 'Run Speed Test';
+  });
+
+  es.addEventListener('speed_start', () => {
+    document.getElementById('speedBtn').disabled = true;
+    document.getElementById('speedBtn').textContent = 'Running…';
+    document.getElementById('speedStatus').textContent = 'Running speed test…';
+  });
+
+  es.addEventListener('alert', e => {
+    const a = JSON.parse(e.data);
+    alerts.unshift(a);
+    alertCount++;
+    document.getElementById('alertBadge').textContent = alertCount;
+    document.getElementById('alertBadge').classList.add('show');
+    renderAlertLog();
+    // Play a short beep via the Web Audio API
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.start(); osc.stop(ctx.currentTime + 0.4);
+    } catch(e) {}
+  });
+
+  es.addEventListener('state', e => {
+    const s = JSON.parse(e.data);
+    if (s.latest) {
+      const r = s.latest;
+      setTile('tileLat',  r.latency_ms, latColor);
+      setTile('tileJit',  r.jitter_ms,  jitColor);
+      setTile('tileLoss', r.pkt_loss,   lossColor, 1);
+      document.getElementById('headerStats').textContent =
+        `${r.host}  ${r.latency_ms?.toFixed(0) ?? '—'} ms`;
+    }
+    if (s.latest_speed) {
+      const r = s.latest_speed;
+      setTile('tileDl', r.download_mbps, ()=>'neutral', 1);
+      setTile('tileUl', r.upload_mbps,   ()=>'neutral', 1);
+      document.getElementById('speedStatus').innerHTML =
+        `↓${r.download_mbps?.toFixed(1)} / ↑${r.upload_mbps?.toFixed(1)} Mbps  (${fmtTs(r.ts)})${symmetryNote(r.download_mbps, r.upload_mbps)}`;
+    }
+  });
+
+  es.onerror = () => {
+    document.getElementById('liveDot').classList.remove('live');
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+function pushPoint(chart, label, values) {
+  chart.data.labels.push(label);
+  values.forEach((v,i) => chart.data.datasets[i].data.push(v));
+  if (chart.data.labels.length > MAX_POINTS) {
+    chart.data.labels.shift();
+    chart.data.datasets.forEach(d => d.shift?.() ?? d.data.shift());
+  }
+  chart.update('none');
+}
+
+function pushBarPoint(chart, label, values) {
+  chart.data.labels.push(label);
+  values.forEach((v,i) => chart.data.datasets[i].data.push(v));
+  chart.update('none');
+}
+
+// ── Bootstrap charts from history ────────────────────────────────────────────
+async function loadCharts() {
+  const [checks, speeds, summary] = await Promise.all([
+    fetch('/api/checks?hours=6').then(r=>r.json()),
+    fetch('/api/speeds?hours=24').then(r=>r.json()),
+    fetch('/api/summary?hours=24').then(r=>r.json()),
+  ]);
+
+  // Latency / loss charts
+  latChart.data.labels = checks.map(r => fmtTs(r.ts));
+  latChart.data.datasets[0].data = checks.map(r => r.latency_ms ?? 0);
+  latChart.data.datasets[1].data = checks.map(r => r.jitter_ms ?? 0);
+  latChart.update('none');
+
+  lossChart.data.labels = checks.map(r => fmtTs(r.ts));
+  lossChart.data.datasets[0].data = checks.map(r => r.pkt_loss ?? 0);
+  lossChart.update('none');
+
+  // Speed chart
+  speedChart.data.labels = speeds.map(r => fmtTs(r.ts));
+  speedChart.data.datasets[0].data = speeds.map(r => r.download_mbps ?? 0);
+  speedChart.data.datasets[1].data = speeds.map(r => r.upload_mbps ?? 0);
+  speedChart.update('none');
+
+  // Consistency tile
+  const c = summary.checks;
+  const total = c.total || 0;
+  const pct = total ? ((1 - (c.failures||0)/total)*100) : null;
+  setTile('tileConsistency', pct, conColor, 1);
+}
+
+// ── Speed symmetry helper ─────────────────────────────────────────────────────
+function symmetryNote(dl, ul) {
+  if (dl == null || ul == null || ul === 0) return '';
+  const faster = dl >= ul ? 'upload' : 'download';
+  const slower = dl >= ul ? 'download' : 'upload';
+  const pct = Math.round(Math.abs(dl - ul) / Math.max(dl, ul) * 100);
+  if (pct < 2) return '  <span style="color:var(--green)">≈ symmetric</span>';
+  return `  <span style="color:var(--yellow)">${slower} is ${pct}% slower than ${faster}</span>`;
+}
+
+// ── Speed test ────────────────────────────────────────────────────────────────
+async function runSpeed() {
+  document.getElementById('speedBtn').disabled = true;
+  document.getElementById('speedBtn').textContent = 'Running…';
+  document.getElementById('speedStatus').textContent = 'Starting speed test…';
+  await fetch('/api/speed', {method:'POST'});
+}
+
+// ── Alert modal ───────────────────────────────────────────────────────────────
+function openAlertModal() {
+  alertCount = 0;
+  document.getElementById('alertBadge').textContent = '0';
+  document.getElementById('alertBadge').classList.remove('show');
+  document.getElementById('alertModal').classList.add('open');
+  renderAlertLog();
+}
+function closeAlertModal() { document.getElementById('alertModal').classList.remove('open'); }
+function renderAlertLog() {
+  const el = document.getElementById('alertLog');
+  if (!alerts.length) { el.innerHTML = '<p style="color:var(--muted)">No alerts yet.</p>'; return; }
+  el.innerHTML = alerts.map(a => `
+    <div class="alert-item">
+      <span class="alert-ts">${new Date(a.ts*1000).toLocaleTimeString()}</span>
+      <span class="alert-msg">⚠ ${a.title}<br><small style="color:var(--text)">${a.message}</small></span>
+    </div>`).join('');
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  ['history','query','settings'].forEach(t => {
+    document.getElementById('tab-'+t).style.display = t===name ? '' : 'none';
+  });
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (name === 'history') loadHistory();
+  if (name === 'settings') loadSettings();
+}
+
+// ── History table ─────────────────────────────────────────────────────────────
+let _histView = 'checks';
+function switchHistView(v) { _histView = v; loadHistory(); }
+
+async function loadHistory() {
+  const hours = document.getElementById('histHours').value;
+  const url = _histView === 'checks'
+    ? `/api/checks?hours=${hours}&last=100`
+    : `/api/speeds?hours=${hours}`;
+  const rows = await fetch(url).then(r=>r.json());
+  const wrap = document.getElementById('histTable');
+  if (!rows.length) { wrap.innerHTML = '<p style="color:var(--muted);padding:8px">No data.</p>'; return; }
+
+  if (_histView === 'checks') {
+    wrap.innerHTML = `<table>
+      <thead><tr><th>Time</th><th>Host</th><th>Latency</th><th>Jitter</th><th>Loss %</th><th>OK</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td>${fmtTs(r.ts)}</td>
+        <td>${r.host}</td>
+        <td class="${latColor(r.latency_ms)}">${r.latency_ms?.toFixed(1) ?? '—'} ms</td>
+        <td class="${jitColor(r.jitter_ms)}">${r.jitter_ms?.toFixed(1) ?? '—'} ms</td>
+        <td class="${lossColor(r.pkt_loss)}">${r.pkt_loss?.toFixed(1) ?? '—'}</td>
+        <td>${r.success ? '✓' : '<span class="bad">✗</span>'}</td>
+      </tr>`).join('')}</tbody></table>`;
+  } else {
+    wrap.innerHTML = `<table>
+      <thead><tr><th>Time</th><th>Server</th><th>↓ Mbps</th><th>↑ Mbps</th><th>Ping</th><th>Symmetry</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td>${fmtTs(r.ts)}</td>
+        <td>${r.server ?? '—'}</td>
+        <td class="good">${r.download_mbps?.toFixed(1) ?? '—'}</td>
+        <td style="color:var(--blue)">${r.upload_mbps?.toFixed(1) ?? '—'}</td>
+        <td>${r.ping_ms?.toFixed(0) ?? '—'} ms</td>
+        <td>${symmetryNote(r.download_mbps, r.upload_mbps) || '<span style="color:var(--muted)">—</span>'}</td>
+      </tr>`).join('')}</tbody></table>`;
+  }
+}
+
+// ── NL query ──────────────────────────────────────────────────────────────────
+async function submitQuery() {
+  const q = document.getElementById('queryInput').value.trim();
+  if (!q) return;
+  const el = document.getElementById('queryAnswer');
+  el.innerHTML = '<em style="color:var(--muted)">Thinking…</em>';
+  const res = await fetch('/api/query', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({question: q, hours: 24}),
+  });
+  const j = await res.json();
+  el.innerHTML = marked.parse(j.answer);
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+const FIELDS = [
+  {key:'latency_ms',    label:'Latency threshold (ms)',    help:'Alert if ABOVE'},
+  {key:'jitter_ms',     label:'Jitter threshold (ms)',     help:'Alert if ABOVE'},
+  {key:'pkt_loss_pct',  label:'Packet loss threshold (%)', help:'Alert if ABOVE'},
+  {key:'download_mbps', label:'Min download (Mbps)',       help:'Alert if BELOW'},
+  {key:'upload_mbps',   label:'Min upload (Mbps)',         help:'Alert if BELOW'},
+  {key:'cooldown_sec',  label:'Cooldown (seconds)',        help:'Between repeated alerts'},
+  {key:'ntfy_topic',    label:'ntfy.sh topic',            help:'Leave blank to disable'},
+  {key:'ntfy_server',   label:'ntfy.sh server',           help:'Default: https://ntfy.sh'},
+];
+
+async function loadSettings() {
+  const t = await fetch('/api/alerts').then(r=>r.json());
+  const grid = document.getElementById('settingsGrid');
+  grid.innerHTML = FIELDS.map(f => `
+    <div class="field">
+      <label>${f.label}<span style="color:var(--muted);font-size:11px;margin-left:6px">${f.help}</span></label>
+      <input id="s_${f.key}" value="${t[f.key] ?? ''}" placeholder="—">
+    </div>`).join('');
+}
+
+async function saveSettings() {
+  const body = {};
+  FIELDS.forEach(f => {
+    const v = document.getElementById('s_'+f.key).value.trim();
+    if (v !== '') body[f.key] = isNaN(v) ? v : Number(v);
+  });
+  await fetch('/api/alerts', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const msg = document.getElementById('savedMsg');
+  msg.style.display = 'inline';
+  setTimeout(() => msg.style.display = 'none', 2000);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+connectSSE();
+loadCharts();
+loadHistory();
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+[Unit]
+Description=NetMon — Network Monitor Web Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mikek
+WorkingDirectory=/home/mikek/NetworkStatus
+ExecStart=/home/mikek/NetworkStatus/.venv/bin/uvicorn web.app:app --host 0.0.0.0 --port 8080 --app-dir /home/mikek/NetworkStatus
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+# Optional: set your Anthropic key here for NL queries
+# Environment=ANTHROPIC_API_KEY=sk-ant-...
+
+[Install]
+WantedBy=multi-user.target
