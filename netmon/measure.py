@@ -11,20 +11,37 @@ from typing import Optional
 
 import requests
 
+from .interfaces import preferred_interface, active_interface, NetInterface
+
 
 # ── Latency / Jitter / Packet-loss ─────────────────────────────────────────
 
-def ping(host: str = "8.8.8.8", count: int = 10, timeout: int = 5) -> dict:
+def ping(host: str = "8.8.8.8", count: int = 10, timeout: int = 5,
+         src_ip: Optional[str] = None) -> dict:
     """
     Run system ping and parse results.
     Returns latency_ms, jitter_ms, pkt_loss (0-100), success.
+    src_ip binds the ping to a specific interface (preferred over default route).
     """
     try:
         is_windows = platform.system() == "Windows"
+        is_mac = platform.system() == "Darwin"
         if is_windows:
-            cmd = ["ping", "-n", str(count), "-w", str(timeout * 1000), host]
+            cmd = ["ping", "-n", str(count), "-w", str(timeout * 1000)]
+            if src_ip:
+                cmd += ["-S", src_ip]
+            cmd.append(host)
+        elif is_mac:
+            cmd = ["ping", "-c", str(count), "-W", str(timeout * 1000)]
+            if src_ip:
+                cmd += ["-S", src_ip]
+            cmd.append(host)
         else:
-            cmd = ["ping", "-c", str(count), "-W", str(timeout * 1000), host]
+            # Linux: -I accepts interface name or source address
+            cmd = ["ping", "-c", str(count), "-W", str(timeout)]
+            if src_ip:
+                cmd += ["-I", src_ip]
+            cmd.append(host)
 
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout + count + 5
@@ -93,13 +110,17 @@ def ping(host: str = "8.8.8.8", count: int = 10, timeout: int = 5) -> dict:
 
 
 def tcp_latency(host: str = "8.8.8.8", port: int = 53,
-                count: int = 5) -> dict:
+                count: int = 5, src_ip: Optional[str] = None) -> dict:
     """Fallback latency check using TCP connect time (no root needed)."""
     rtts = []
     for _ in range(count):
         try:
             t0 = time.perf_counter()
-            sock = socket.create_connection((host, port), timeout=3)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(3)
+            if src_ip:
+                sock.bind((src_ip, 0))
+            sock.connect((host, port))
             sock.close()
             rtts.append((time.perf_counter() - t0) * 1000)
         except Exception:
@@ -120,12 +141,22 @@ def tcp_latency(host: str = "8.8.8.8", port: int = 53,
 
 
 def measure_latency(host: str = "8.8.8.8", count: int = 10) -> dict:
-    """Try ping first, fall back to TCP if ICMP is blocked."""
-    result = ping(host, count)
+    """Try ping first, fall back to TCP if ICMP is blocked.
+    Binds to the preferred interface (wired > wifi > vpn)."""
+    iface = preferred_interface(host)
+    src_ip = iface.ip if iface else None
+
+    result = ping(host, count, src_ip=src_ip)
     if not result["success"]:
-        result = tcp_latency(host, count=count)
+        result = tcp_latency(host, count=count, src_ip=src_ip)
+
+    # Detect which interface was actually used after binding
+    used = active_interface(host) if not src_ip else iface
     result["host"] = host
     result["ts"] = datetime.now(timezone.utc)
+    result["iface_name"] = used.name if used else None
+    result["iface_kind"] = used.kind if used else None
+    result["iface_label"] = used.display() if used else None
     return result
 
 
@@ -222,10 +253,24 @@ def run_speed_test(url_count: int = 5) -> dict:
     """
     Measure download and upload speed using Netflix's fast.com infrastructure.
     Downloads/uploads run concurrently across multiple CDN targets.
+    Binds to the preferred interface (wired > wifi > vpn).
     """
     import concurrent.futures as _cf
 
     try:
+        iface = preferred_interface("api.fast.com")
+        src_ip = iface.ip if iface else None
+
+        # Bind a requests Session to the preferred source IP
+        session = requests.Session()
+        if src_ip:
+            import socket as _socket
+            orig_create = _socket.create_connection
+            def _bound_create(address, timeout=None, source_address=None):
+                return orig_create(address, timeout=timeout,
+                                   source_address=(src_ip, 0))
+            _socket.create_connection = _bound_create
+
         token   = _get_fast_token()
         targets = _fast_targets(token, url_count)
         urls    = [t["url"] for t in targets]
@@ -259,6 +304,9 @@ def run_speed_test(url_count: int = 5) -> dict:
             "server":        server,
             "ts":            datetime.now(timezone.utc),
             "success":       True,
+            "iface_name":    iface.name if iface else None,
+            "iface_kind":    iface.kind if iface else None,
+            "iface_label":   iface.display() if iface else None,
         }
 
     except Exception as e:
@@ -267,7 +315,13 @@ def run_speed_test(url_count: int = 5) -> dict:
             "ping_ms": None, "server": None,
             "ts": datetime.now(timezone.utc),
             "success": False, "error": str(e),
+            "iface_name": None, "iface_kind": None, "iface_label": None,
         }
+    finally:
+        # Restore original socket.create_connection if we patched it
+        if src_ip:
+            import socket as _socket
+            _socket.create_connection = orig_create
 
 
 # ── HTTP-based fallback speed estimate ──────────────────────────────────────

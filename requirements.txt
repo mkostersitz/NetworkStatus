@@ -7,3 +7,4 @@ plotext>=5.2
 anthropic>=0.18
 click>=8.1
 requests>=2.31
+psutil>=5.9

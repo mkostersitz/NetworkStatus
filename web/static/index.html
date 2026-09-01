@@ -142,6 +142,7 @@ tr:last-child td { border-bottom: none; }
   <div class="dot" id="liveDot"></div>
   <h1>NetMon</h1>
   <span id="headerStats" style="color:var(--muted);font-size:13px"></span>
+  <span id="ifaceBadge" style="font-size:13px;margin-left:8px"></span>
   <button class="alert-bell" onclick="openAlertModal()" title="Alerts">
     🔔<span class="alert-badge" id="alertBadge">0</span>
   </button>
@@ -347,6 +348,7 @@ function connectSSE() {
     if (r.ul_mbps != null) setTile('tileUl', r.ul_mbps, ()=>'neutral', 1);
     document.getElementById('headerStats').textContent =
       `${r.host}  ${r.latency_ms?.toFixed(0) ?? '—'} ms`;
+    document.getElementById('ifaceBadge').innerHTML = ifaceBadge(r);
 
     const label = fmtTs(r.ts);
     pushPoint(latChart, label, [r.latency_ms ?? 0, r.jitter_ms ?? 0]);
@@ -359,8 +361,8 @@ function connectSSE() {
     setTile('tileUl', r.upload_mbps,   ()=>'neutral', 1);
     const label = fmtTs(r.ts);
     pushBarPoint(speedChart, label, [r.download_mbps ?? 0, r.upload_mbps ?? 0]);
-    document.getElementById('speedStatus').textContent =
-      `↓${r.download_mbps?.toFixed(1)} / ↑${r.upload_mbps?.toFixed(1)} Mbps  (${label})`;
+    document.getElementById('speedStatus').innerHTML =
+      `↓${r.download_mbps?.toFixed(1)} / ↑${r.upload_mbps?.toFixed(1)} Mbps  (${label})${ifaceBadge(r)}`;
     document.getElementById('speedBtn').disabled = false;
     document.getElementById('speedBtn').textContent = 'Run Speed Test';
   });
@@ -406,7 +408,7 @@ function connectSSE() {
       setTile('tileDl', r.download_mbps, ()=>'neutral', 1);
       setTile('tileUl', r.upload_mbps,   ()=>'neutral', 1);
       document.getElementById('speedStatus').innerHTML =
-        `↓${r.download_mbps?.toFixed(1)} / ↑${r.upload_mbps?.toFixed(1)} Mbps  (${fmtTs(r.ts)})${symmetryNote(r.download_mbps, r.upload_mbps)}`;
+        `↓${r.download_mbps?.toFixed(1)} / ↑${r.upload_mbps?.toFixed(1)} Mbps  (${fmtTs(r.ts)})${symmetryNote(r.download_mbps, r.upload_mbps)}${ifaceBadge(r)}`;
     }
   });
 
@@ -461,6 +463,17 @@ async function loadCharts() {
   const total = c.total || 0;
   const pct = total ? ((1 - (c.failures||0)/total)*100) : null;
   setTile('tileConsistency', pct, conColor, 1);
+}
+
+// ── Interface badge ───────────────────────────────────────────────────────────
+function ifaceBadge(r) {
+  if (!r || !r.iface_label) return '';
+  const colors = {wired: 'var(--green)', wifi: 'var(--yellow)',
+                  vpn: 'var(--purple, #a78bfa)', other: 'var(--muted)'};
+  const icons  = {wired: '🔌', wifi: '📶', vpn: '🔒', other: '🌐'};
+  const col  = colors[r.iface_kind] || colors.other;
+  const icon = icons[r.iface_kind]  || icons.other;
+  return `  <span style="color:${col};font-size:.85em">${icon} ${r.iface_label}</span>`;
 }
 
 // ── Speed symmetry helper ─────────────────────────────────────────────────────

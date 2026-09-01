@@ -117,9 +117,15 @@ def run(
                 dl = f"[green]↓{last_dl:.1f}[/]" if last_dl is not None else "[dim]↓—[/]"
                 ul = f"[blue]↑{last_ul:.1f}[/]"  if last_ul is not None else "[dim]↑—[/]"
                 speed_str = f"  {dl}/{ul} Mbps"
+            iface_str = ""
+            if r.get("iface_label"):
+                kind_color = {"wired": "green", "wifi": "yellow",
+                              "vpn": "magenta", "other": "dim"}.get(
+                    r.get("iface_kind", "other"), "dim")
+                iface_str = f"  [{kind_color}]{r['iface_label']}[/]"
             console.log(
                 f"[cyan]{host}[/]  lat=[bold]{lat}[/]  "
-                f"jitter={jit}  loss={loss}{speed_str}"
+                f"jitter={jit}  loss={loss}{speed_str}{iface_str}"
             )
 
     def do_speed():
@@ -136,9 +142,15 @@ def run(
                 alerter.check_speed(r.get("download_mbps"), r.get("upload_mbps"))
             if not quiet:
                 ping_str = f"  ping={r['ping_ms']:.0f}ms" if r["ping_ms"] else ""
+                iface_str = ""
+                if r.get("iface_label"):
+                    kind_color = {"wired": "green", "wifi": "yellow",
+                                  "vpn": "magenta", "other": "dim"}.get(
+                        r.get("iface_kind", "other"), "dim")
+                    iface_str = f"  [{kind_color}]{r['iface_label']}[/]"
                 console.log(
                     f"[green]Speed:[/] ↓{r['download_mbps']:.1f} Mbps  "
-                    f"↑{r['upload_mbps']:.1f} Mbps{ping_str}"
+                    f"↑{r['upload_mbps']:.1f} Mbps{ping_str}{iface_str}"
                 )
         else:
             if not quiet:
