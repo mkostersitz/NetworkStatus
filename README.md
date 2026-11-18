@@ -1,6 +1,6 @@
 # NetMon — Network Monitoring Toolkit
 
-Continuous monitoring of **latency, jitter, packet loss, and upload/download speed** with SQLite history, a real-time web UI, push alerts, and natural-language querying via Claude. Runs on macOS, Linux, Windows 11, and Raspberry Pi.
+Continuous monitoring of **latency, jitter, packet loss, and upload/download speed** with SQLite history, a real-time web UI, push alerts, and natural-language querying via Claude. Runs on macOS, Linux, Windows 11, and NVIDIA Jetson (or any Linux SBC).
 
 ---
 
@@ -42,10 +42,10 @@ py -3.12 -m venv .venv            # use py launcher, not python (avoids MSYS2/UC
 
 ### Linux — systemd
 
-A `netmon.service` unit file is included. Deploy to a Pi or any Linux host:
+A `netmon.service` unit file is included. Deploy to a Jetson or any Linux host:
 
 ```bash
-./deploy.sh mikek@raspberrypi.local
+./deploy.sh mikek@orin12
 ```
 
 The service starts automatically on boot. Secrets (API keys) go in the systemd override file — **never** the main service file, which gets overwritten on deploy:
